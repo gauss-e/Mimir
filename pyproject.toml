@@ -1,0 +1,29 @@
+# Packaged with hatchling (src layout), managed/run with uv.
+#   dev run:        uv run mimir
+#   global install: uv tool install .   -> `mimir` on your PATH
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mimir"
+version = "0.1.0"
+description = "A personal career-advisor TUI agent."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+# Core: Textual for the TUI. Ollama uses stdlib urllib.
+dependencies = ["textual>=0.60"]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40"]
+openai = ["openai>=1.30"]
+notion = ["mcp>=1.0"]               # pull profile info from Notion via MCP
+files = ["pypdf>=4.0", "python-docx>=1.1"]  # parse .pdf / .docx résumés
+
+[project.scripts]
+mimir = "mimir.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mimir"]

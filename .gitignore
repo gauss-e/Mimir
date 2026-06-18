@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Mimir local
+config.toml
+.env
+src/mimir/profile/profile.md
+
+.DS_Store
+
+# IDE
+.idea/

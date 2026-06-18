@@ -1,0 +1,31 @@
+# Copy to config.toml and edit. Values like "env:NAME" read from the environment.
+
+[llm]
+# which backend to use: "openai" | "anthropic" | "ollama"
+provider = "anthropic"
+
+[llm.openai]
+api_key = "env:OPENAI_API_KEY"
+model = "gpt-4o"
+# base_url = "https://api.openai.com/v1"   # set for OpenAI-compatible gateways
+
+[llm.anthropic]
+api_key = "env:ANTHROPIC_API_KEY"
+model = "claude-opus-4-8"
+max_tokens = 4096
+
+[llm.ollama]
+host = "http://localhost:11434"
+model = "llama3"
+
+[profile]
+# where the living profile is stored (defaults to inside the profile module)
+# path = "mimir/profile/profile.md"
+
+# Optional: pull career info from Notion via an MCP server.
+[notion]
+command = "npx"
+args = ["-y", "@notionhq/notion-mcp-server"]
+env = { NOTION_TOKEN = "env:NOTION_TOKEN" }
+search_tool = "search"   # adjust to match your Notion MCP server's tool names
+fetch_tool = "fetch"
