@@ -112,8 +112,10 @@ class MimirApp(App):
         self.query_one(Input).focus()
 
     def on_unmount(self) -> None:
+        # Fire-and-forget: MCP teardown (esp. a remote session's DELETE round-
+        # trip) must not block quitting. Hand it to a daemon thread and return.
         if self.hub is not None:
-            self.hub.stop()
+            self.hub.shutdown_background()
 
     # --- input handling --------------------------------------------------
     # Some terminals deliver certain keys with no associated character (e.g.

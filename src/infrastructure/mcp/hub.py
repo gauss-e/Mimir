@@ -30,6 +30,7 @@ from .registry import McpServerConfig
 CONNECT_TIMEOUT = 30.0   # seconds to bring a local server up
 LOGIN_TIMEOUT = 300.0    # seconds allowed for an interactive OAuth browser login
 CALL_TIMEOUT = 60.0      # seconds for one tool call
+SHUTDOWN_TIMEOUT = 2.0   # seconds the daemon teardown waits for a clean close
 
 
 @dataclass(frozen=True)
@@ -99,8 +100,22 @@ class McpHub:
         if self._stop_event is not None:
             self._loop.call_soon_threadsafe(self._stop_event.set)
         if self._thread is not None:
-            self._thread.join(timeout=10)
+            self._thread.join(timeout=SHUTDOWN_TIMEOUT)
         self._loop.call_soon_threadsafe(self._loop.stop)
+
+    def shutdown_background(self) -> None:
+        """Tear the connections down on a daemon thread; return immediately.
+
+        Quit must not block the terminal on MCP teardown — closing a remote
+        session does a network round-trip (DELETE + SSE cancel) that can take
+        seconds. Fire-and-forget: signal the stop and let a daemon thread do the
+        best-effort close (up to ``SHUTDOWN_TIMEOUT``) while the app exits at
+        once. If the process dies first the daemon dies with it — fine, the
+        server-side session just expires on its own later.
+        """
+        if self._loop is None:
+            return
+        threading.Thread(target=self.stop, daemon=True).start()
 
     # --- the long-lived connection task ----------------------------------
     async def _open_streams(self, stack, cfg: McpServerConfig):
