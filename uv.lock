@@ -597,7 +597,7 @@ files = [
     { name = "pypdf" },
     { name = "python-docx" },
 ]
-notion = [
+mcp = [
     { name = "mcp" },
 ]
 openai = [
@@ -607,13 +607,13 @@ openai = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.40" },
-    { name = "mcp", marker = "extra == 'notion'", specifier = ">=1.0" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.30" },
     { name = "pypdf", marker = "extra == 'files'", specifier = ">=4.0" },
     { name = "python-docx", marker = "extra == 'files'", specifier = ">=1.1" },
     { name = "textual", specifier = ">=0.60" },
 ]
-provides-extras = ["anthropic", "openai", "notion", "files"]
+provides-extras = ["anthropic", "openai", "mcp", "files"]
 
 [[package]]
 name = "openai"

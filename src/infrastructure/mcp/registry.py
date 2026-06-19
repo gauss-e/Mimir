@@ -2,13 +2,13 @@
 
 Mimir talks to external tools (Notion, the filesystem, Office docs, …) through
 **MCP servers**. The server set is *not* hardcoded — it is read from two
-Claude-Code-style JSON files (see ``config._load_mcp_json``):
+Claude-Code-style JSON layers (see ``config._load_mcp_json``):
 
-- ``mcp.json``       — committed, user-editable, shared servers.
-- ``mcp.local.json`` — gitignored, machine-local servers / overrides.
+- ``src/resources/mcp.local.json`` — built-in, committed, always loaded.
+- ``~/.mimir/mcp.json``            — optional per-user extra servers / overrides.
 
-Both are merged into one ``mcpServers`` object (local wins on a name clash);
-listing a server there both defines *and* activates it, just like Claude Code::
+Both are merged into one ``mcpServers`` object (the user file wins on a name
+clash); listing a server there both defines *and* activates it, like Claude Code::
 
     {
       "mcpServers": {
@@ -66,7 +66,8 @@ def load_servers(mcp_json: dict | None = None) -> list[McpServerConfig]:
     """Resolve the MCP servers entirely from the merged JSON config.
 
     ``mcp_json`` is the merged ``{"mcpServers": {...}}`` object produced by
-    ``config._load_mcp_json`` (``mcp.json`` overlaid by ``mcp.local.json``).
+    ``config._load_mcp_json`` (built-in ``mcp.local.json`` overlaid by the
+    user's ``~/.mimir/mcp.json``).
     Nothing is hardcoded: a server exists only if it is listed there.
     """
     servers: dict[str, McpServerConfig] = {}

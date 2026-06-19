@@ -71,7 +71,7 @@ class McpHub:
         except ImportError:
             self.status = HubStatus(
                 connected=[],
-                failed={s.name: "MCP SDK missing (uv sync --extra notion)"
+                failed={s.name: "MCP SDK missing (uv sync --extra mcp)"
                         for s in self._servers},
                 tool_count=0,
             )
@@ -106,15 +106,25 @@ class McpHub:
     async def _open_streams(self, stack, cfg: McpServerConfig):
         """Open the right transport for ``cfg`` and return (read, write)."""
         if cfg.is_remote():
-            from mcp.client.streamable_http import streamablehttp_client
+            from mcp.client.streamable_http import (
+                create_mcp_http_client,
+                streamable_http_client,
+            )
 
             from .oauth import build_oauth_provider
 
             # OAuth (SSO) kicks in lazily: the SDK opens the browser + catches
-            # the loopback callback on the first request that needs auth.
+            # the loopback callback on the first request that needs auth. The
+            # OAuthClientProvider is an httpx.Auth, so it rides on the httpx
+            # client. We own that client's lifecycle (streamable_http_client
+            # only closes a client it created), so enter it on the stack first
+            # — LIFO closes it after the transport tears down.
             auth = build_oauth_provider(cfg.url, cfg.name)
+            http_client = await stack.enter_async_context(
+                create_mcp_http_client(auth=auth)
+            )
             streams = await stack.enter_async_context(
-                streamablehttp_client(cfg.url, auth=auth)
+                streamable_http_client(cfg.url, http_client=http_client)
             )
             return streams[0], streams[1]  # (read, write, get_session_id)
 

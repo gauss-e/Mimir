@@ -219,7 +219,9 @@ __marimo__/
 
 # Mimir local
 config.toml
-mcp.local.json
+# Built-in MCP servers ship in the package and are committed; only stray
+# top-level copies are local/ignored.
+mcp.json
 .env
 src/profiles/profile.md
 

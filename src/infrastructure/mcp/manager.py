@@ -33,7 +33,7 @@ async def _probe_one(cfg: McpServerConfig) -> ProbeResult:
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
     except ImportError:
-        return ProbeResult(cfg.name, ok=False, error="MCP SDK missing (uv sync --extra notion)")
+        return ProbeResult(cfg.name, ok=False, error="MCP SDK missing (uv sync --extra mcp)")
 
     params = StdioServerParameters(
         command=cfg.command,
