@@ -14,8 +14,10 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
+from textual.theme import Theme
 from textual.widgets import Footer, Header, Input, Static
 
+from banner_art import MIMIR_ART
 from config import Config, load_config
 from infrastructure.llm import Message, build_provider
 from infrastructure.mcp import McpHub, McpServerConfig, load_servers
@@ -39,20 +41,58 @@ ONBOARDING = """No profile found yet. Tell me about your career so I can build o
 HELP = ("/profile  /reload  /file <path>  /notion <q>  "
         "/mcp [add <name> <cmd|url> …] [logout <name>]  /help  /quit")
 
+# MIMIR_ART (imported above): pixel-art Mimir (God of War), truecolor
+# half-block portrait shown left of the welcome banner. See banner_art.py.
+
+
+def _mimir_version() -> str:
+    try:
+        from importlib.metadata import version
+        return version("mimir")
+    except Exception:
+        return "0.1.0"
+
+
+# Jarvis cockpit palette: deep navy base, cyan (user) + amber (mimir) accents,
+# violet for tool calls. Drives both the theme vars used in CSS and the chips.
+JARVIS_THEME = Theme(
+    name="jarvis",
+    primary="#38bdf8",    # cyan  — user
+    secondary="#fbbf24",  # amber — mimir
+    accent="#a78bfa",     # violet — tool calls
+    foreground="#e6edf3",
+    background="#0b0e14",
+    surface="#11161f",
+    panel="#161d2b",
+    success="#34d399",
+    warning="#fbbf24",
+    error="#f85149",
+    dark=True,
+)
+
 
 class MimirApp(App):
     CSS = """
-    Screen { layout: vertical; }
+    Screen { layout: vertical; background: $background; }
     /* Chat fills all space between header and the input/footer. */
-    #chat { height: 1fr; padding: 1 2; }
-    #chat > Static { width: 100%; height: auto; margin: 0 0 1 0; }
-    .user   { color: $text; }
-    .mimir  { color: $success; }
-    .info   { color: $text-muted; }
-    .error  { color: $error; }
+    #chat { height: 1fr; padding: 1 2; background: $background; }
+    /* Every message is a card: bg fill, a role-tinted left bar, inset padding. */
+    #chat > Static { width: 100%; height: auto; margin: 0 0 1 0; padding: 0 1; }
+    /* Welcome banner: a rounded box, fixed above the chat (outside the scroll)
+       so it stays put. Hugs its content (Claude-Code style). */
+    #banner { width: auto; height: auto; border: round $secondary;
+              padding: 0 1; margin: 1 1 0 1; color: $text; }
+    .user  { background: $primary 12%;   border-left: thick $primary; }
+    .mimir { background: $panel;          border-left: thick $secondary; }
+    /* Tool calls: dimmer inset card, indented under the reply that triggered them. */
+    .tool  { background: $surface; color: $text-muted; border-left: thick $accent;
+             margin: 0 2 1 6; }
+    .info  { color: $text-muted; text-style: italic; }
+    .error { background: $error 12%; color: $error; border-left: thick $error; }
     /* Input sits in normal flow (not docked) above the footer, fixed height,
        so it never fights the Footer for the bottom edge or clip the chat. */
-    #prompt { height: 3; margin: 0 1; border: round $accent; }
+    #prompt { height: 3; margin: 1 1 0 1; border: round $secondary; background: $surface; }
+    #prompt:focus { border: round $primary; }
     """
     # priority=True so a focused Input can't swallow the quit keys.
     BINDINGS = [
@@ -75,22 +115,28 @@ class MimirApp(App):
         # them connected so the agent can call their tools mid-chat.
         self.mcp_servers = load_servers(config.mcp_json)
         self.hub: McpHub | None = None
+        self.banner: Static | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
+        # Banner is fixed above the chat (not inside the scroll) so it stays put.
+        yield Static(id="banner", markup=True)
         yield VerticalScroll(id="chat")
         yield Input(id="prompt", placeholder="Message Mimir…  (/help, /quit)")
         yield Footer()
 
     # --- lifecycle -------------------------------------------------------
     def on_mount(self) -> None:
-        self.title = "Mimir"
-        self.sub_title = "Career Advisor"
+        self.register_theme(JARVIS_THEME)
+        self.theme = "jarvis"
+        self.title = "✦ Mimir ✦"
+        self.sub_title = ""
+        n = len(self.mcp_servers)
+        self._mount_banner(f"[dim]connecting {n} MCP…[/]" if n
+                           else "[dim]no MCP servers[/]")
         try:
             self.llm = build_provider(self.config.provider, self.config.llm_settings())
             self.service = ProfileService(self.store, self.llm, self.config.notion)
-            model = self.config.llm_settings().get("model", "")
-            self.sub_title = f"{self.config.provider}·{model}".rstrip("·")
         except Exception as e:
             self.init_error = str(e)
             self._say("error", f"LLM not ready: {e}")
@@ -104,10 +150,8 @@ class MimirApp(App):
             self.mode = "chat"
             self._say("info", f"Profile loaded from {self.config.profile_path}.")
             self._say("info", "Ask me anything about your career. /help for commands.")
-        n = len(self.mcp_servers)
-        if n:
-            names = ", ".join(s.name for s in self.mcp_servers)
-            self._say("info", f"connecting {n} MCP server(s): {names}…")
+        if self.mcp_servers:
+            # Connect quietly in the background — no tool-count chatter in the UI.
             self._start_hub_worker(self.mcp_servers)
         self.query_one(Input).focus()
 
@@ -122,7 +166,8 @@ class MimirApp(App):
     # "/" arrives as key="slash" character=None). Textual's Input only inserts
     # keys that carry a printable character, so those keys silently vanish. We
     # recover them here: when a focused prompt sees such a key, insert the glyph.
-    _KEY_FIXUPS = {"slash": "/", "question_mark": "?", "backslash": "\\"}
+    _KEY_FIXUPS = {"slash": "/", "question_mark": "?", "backslash": "\\",
+                   "space": " "}
 
     def on_key(self, event) -> None:
         if event.character is not None:
@@ -221,8 +266,9 @@ class MimirApp(App):
     @work(thread=True)
     def _agent_worker(self, messages: list[Message], bubble: Static) -> None:
         # `box` holds the current bubble + its accumulated text. A tool call
-        # finalizes the bubble, drops a "🔧 …" line, and starts a fresh bubble
-        # so streamed text lands above and below the tool announcement.
+        # finalizes the bubble, drops a dim "(Mimir is working…)" line — we
+        # never expose raw tool names/args — and starts a fresh bubble so
+        # streamed text lands above and below the working note.
         box = {"bubble": bubble, "acc": []}
 
         def on_text(piece: str) -> None:
@@ -232,10 +278,7 @@ class MimirApp(App):
             self.call_from_thread(self._scroll_end)
 
         def on_tool(name: str, args: dict) -> None:
-            preview = ", ".join(f"{k}={v!r}" for k, v in (args or {}).items())
-            if len(preview) > 80:
-                preview = preview[:77] + "…"
-            self.call_from_thread(self._say, "info", f"🔧 {name}({preview})")
+            self.call_from_thread(self._say, "info", "(Mimir 正在查阅资料…)")
             box["bubble"] = self.call_from_thread(self._say, "mimir", "…")
             box["acc"] = []
 
@@ -346,22 +389,50 @@ class MimirApp(App):
         hub = McpHub(servers)
         st = hub.start()
         self.hub = hub
-        tools = ", ".join(t.name for t in hub.tools())
-        lines = [f"MCP ready: {len(st.connected)}/{len(servers)} connected, "
-                 f"{st.tool_count} tool(s)"]
-        if tools:
-            lines.append(f"  tools: {tools}")
-        for fname, err in st.failed.items():
-            lines.append(f"  ✗ {fname}  —  {err}")
-        self.call_from_thread(self._say, "info", "\n".join(lines))
+        ok, total = len(st.connected), len(servers)
+        # Banner shows connection status only — no tool counts in the UI.
+        mcp_line = (f"[#34d399]✓[/] connected {ok}/{total} MCP"
+                    if ok else f"[#f85149]✗[/] 0/{total} MCP — see /mcp")
+        self.call_from_thread(self._render_banner, mcp_line)
+        # Only surface failures; a clean connect stays silent.
+        if st.failed:
+            lines = [f"  ✗ {fname}  —  {err}" for fname, err in st.failed.items()]
+            self.call_from_thread(self._say, "error", "\n".join(lines))
+
+    # --- banner ----------------------------------------------------------
+    def _mount_banner(self, mcp_line: str) -> None:
+        banner = self.query_one("#banner", Static)
+        banner.border_title = "Mimir"
+        self.banner = banner
+        self._render_banner(mcp_line)
+
+    def _render_banner(self, mcp_line: str) -> None:
+        """Icon (left) + info rows (right), Claude-Code style. ``mcp_line`` is
+        the live MCP status, refreshed once the hub connects."""
+        if self.banner is None:
+            return
+        info = [
+            f"[b #fbbf24]Mimir[/]  [dim]v{_mimir_version()}[/]",
+            "[dim]God of War · the well of wisdom[/]",
+            mcp_line,
+            "[dim]/help for commands · /quit to exit[/]",
+        ]
+        # Vertically center the info block against the taller portrait.
+        pad = (len(MIMIR_ART) - len(info)) // 2
+        info = [""] * pad + info + [""] * (len(MIMIR_ART) - len(info) - pad)
+        rows = [f"{art}      {tx}" for art, tx in zip(MIMIR_ART, info)]
+        self.banner.update("\n".join(rows))
 
     # --- view helpers ----------------------------------------------------
     def _fmt(self, who: str, text: str) -> str:
+        # Filled chips: dark glyph on the role's accent color. Chip lands on the
+        # first line; multi-line bodies flow underneath inside the card.
         labels = {
-            "user": "[b cyan]you ›[/] ",
-            "mimir": "[b magenta]mimir ›[/] ",
-            "info": "",
-            "error": "",
+            "user":  "[b #0b0e14 on #38bdf8] YOU [/]  ",
+            "mimir": "[b #0b0e14 on #fbbf24] MIMIR [/]  ",
+            "tool":  "[b #0b0e14 on #a78bfa] TOOL [/]  ",
+            "error": "[b #0b0e14 on #f85149] ERROR [/]  ",
+            "info":  "",
         }
         return labels.get(who, "") + text
 
@@ -370,6 +441,9 @@ class MimirApp(App):
         chat = self.query_one("#chat", VerticalScroll)
         chat.mount(bubble)
         self._scroll_end()
+        # Keep the cursor anchored in the input: mounting messages (or a click)
+        # can move focus, so re-assert it on the prompt after every message.
+        self.query_one("#prompt", Input).focus()
         return bubble
 
     def _scroll_end(self) -> None:
