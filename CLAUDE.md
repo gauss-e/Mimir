@@ -26,14 +26,13 @@ Two modules ship today:
 ```
 Mimir/
   pyproject.toml          # hatchling packaging + uv; console script `mimir`
-  config.toml             # local secrets (gitignored)
-  config.example.toml     # committed template
-  mcp.json                # committed, user-editable MCP servers (shared)
-  mcp.local.json          # gitignored MCP servers / overrides (machine-local)
+  config.toml             # local config + secrets (gitignored; no committed template)
   src/                    # package root (hatchling strips the src/ prefix on build)
     cli.py                # entry point -> console script `mimir = "cli:main"`
     app.py                # Textual TUI
-    config.py             # TOML + env (env:VAR) config + mcp.json/mcp.local.json merge
+    config.py             # TOML + env (env:VAR) config + built-in/user mcp.json merge
+    resources/            # bundled package data
+      mcp.local.json      # built-in MCP servers (committed, ship in wheel, always loaded)
     infrastructure/       # cross-cutting plumbing (not domain logic)
       llm/                # base.py client.py providers/{openai,anthropic,ollama}_provider.py
       mcp/                # MCP registry (JSON-driven) + hub + oauth + manager (probe)
@@ -61,14 +60,15 @@ top level. There is exactly one copy of the source under `src/`; the
 ## Conventions
 
 - **Deps**: `uv` only (not poetry / raw pip). `uv sync --extra <name>` for
-  optional backends (`anthropic` / `openai` / `notion` / `files`).
+  optional backends (`anthropic` / `openai` / `mcp` / `files`).
 - **Run (dev)**: `uv run mimir`. **Install**: `uv tool install .` →
   `mimir` on PATH; re-`--reinstall` after code changes.
 - **Style**: PEP 8, type annotations on signatures, `from __future__ import
   annotations`, dataclasses for config/DTOs. black / isort / ruff.
 - **Config**: never commit secrets. Use `env:VAR_NAME` strings in
   `config.toml`; they resolve from the environment at load. Keep `config.toml`
-  and `profile.md` gitignored; commit `config.example.toml`.
+  and `profile.md` gitignored. No committed template — edit `config.toml`
+  directly; do not (re)create `config.example.toml`.
 - **Surgical changes**: match surrounding style; touch only what the task needs.
 
 ## TUI rules
@@ -92,13 +92,14 @@ top level. There is exactly one copy of the source under `src/`; the
   lets the agent *call* their tools mid-chat. Files in `infrastructure/mcp/`:
   - `registry.py` (`load_servers`) builds the server set **entirely from the
     merged JSON** — nothing is hardcoded (no presets, no `[mcp]` TOML table).
-    `config.py::_load_mcp_json` reads two Claude-Code-style files and merges
-    their `mcpServers` objects: `mcp.json` (committed, user-editable, shared —
-    best for remote OAuth servers) then `mcp.local.json` (gitignored,
-    machine-local servers / overrides), so **local wins on a name clash**.
-    `$MIMIR_MCP_JSON` overrides the base `mcp.json` path; `env:NAME` values
-    resolve like TOML. A server listed in either file is both defined and
-    active, just like Claude Code.
+    `config.py::_load_mcp_json` merges two Claude-Code-style layers'
+    `mcpServers` objects: the **built-in** `src/resources/mcp.local.json`
+    (committed, shipped in the wheel, loaded on every startup — no setup) then
+    the **user** `~/.mimir/mcp.json` (optional extra servers / overrides), so
+    **the user file wins on a name clash**. On startup `~/.mimir` is created if
+    absent; its `mcp.json` is read only when present. `$MIMIR_MCP_JSON`
+    overrides the user-file path; `env:NAME` values resolve like TOML. A server
+    listed in either layer is both defined and active, just like Claude Code.
   - `hub.py` (`McpHub`) is the live client: it keeps every server **connected**
     for the life of the app and dispatches tool calls. The MCP SDK is async and
     its stdio sessions are loop-bound, so the hub owns a private asyncio loop in
@@ -130,7 +131,7 @@ top level. There is exactly one copy of the source under `src/`; the
   reconnect the hub and print a config snippet to persist. `/mcp logout <name>`
   clears cached OAuth tokens (forces re-login). Hub start/reconnect runs in a
   worker thread (it launches subprocesses / opens the browser).
-- The MCP SDK is the optional `notion` extra; degrade gracefully when absent
+- The MCP SDK is the optional `mcp` extra; degrade gracefully when absent
   (hub reports the servers as failed; chat still works without tools).
 
 ## Verify before done

@@ -1,0 +1,10 @@
+# Local dev config. Uses Ollama so the app boots with no API key.
+# Note: actually chatting/ingesting needs a real Ollama running at `host`
+# (`ollama serve` + `ollama pull llama3`). Startup + onboarding work regardless.
+
+[llm]
+provider = "ollama"
+
+[llm.ollama]
+host = "http://localhost:11434"
+model = "gemma4:31b"

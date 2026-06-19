@@ -70,9 +70,9 @@ class MimirApp(App):
         self.init_error: str | None = None
         self.mode = "chat"  # "chat" | "onboarding"
         self.history: list[Message] = []
-        # MCP servers read entirely from mcp.json + mcp.local.json (nothing
-        # hardcoded). The hub keeps them connected so the agent can call their
-        # tools mid-chat.
+        # MCP servers read entirely from JSON (nothing hardcoded): built-in
+        # resources/mcp.local.json overlaid by ~/.mimir/mcp.json. The hub keeps
+        # them connected so the agent can call their tools mid-chat.
         self.mcp_servers = load_servers(config.mcp_json)
         self.hub: McpHub | None = None
 
@@ -288,8 +288,9 @@ class MimirApp(App):
         if not self.mcp_servers:
             self._say(
                 "info",
-                "No MCP servers configured. Add one to mcp.json (shared) or "
-                "mcp.local.json (local), or run /mcp add <name> <cmd|url> <args…>.",
+                "No MCP servers configured. Built-ins live in the package "
+                "(resources/mcp.local.json); add your own to ~/.mimir/mcp.json, "
+                "or run /mcp add <name> <cmd|url> <args…>.",
             )
             return
         if self.hub is None:
@@ -321,14 +322,14 @@ class MimirApp(App):
             return
         if second.startswith("http://") or second.startswith("https://"):
             cfg = McpServerConfig(name=name, transport="http", url=second)
-            snippet = (f"# in mcp.json (\"mcpServers\"):\n  \"{name}\": "
+            snippet = (f"# in ~/.mimir/mcp.json (\"mcpServers\"):\n  \"{name}\": "
                        f"{{ \"type\": \"http\", \"url\": \"{second}\" }}")
             self._say("info",
                       f"added remote {name!r}; a browser may open for login…")
         else:
             args_json = json.dumps(rest)
             cfg = McpServerConfig(name=name, command=second, args=rest)
-            snippet = (f"# in mcp.local.json (\"mcpServers\"):\n  \"{name}\": "
+            snippet = (f"# in ~/.mimir/mcp.json (\"mcpServers\"):\n  \"{name}\": "
                        f"{{ \"command\": \"{second}\", \"args\": {args_json} }}")
             self._say("info", f"added {name!r}; reconnecting all MCP servers…")
         self.mcp_servers.append(cfg)

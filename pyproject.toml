@@ -19,7 +19,7 @@ dependencies = ["textual>=0.60"]
 [project.optional-dependencies]
 anthropic = ["anthropic>=0.40"]
 openai = ["openai>=1.30"]
-notion = ["mcp>=1.0"]               # pull profile info from Notion via MCP
+mcp = ["mcp>=1.0"]
 files = ["pypdf>=4.0", "python-docx>=1.1"]  # parse .pdf / .docx résumés
 
 [project.scripts]

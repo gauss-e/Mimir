@@ -1,0 +1,9 @@
+{
+  "_comment": "Built-in MCP servers, shipped in the package and loaded on every startup. Add a server here only if every Mimir install should always run it. Per-user servers/overrides go in ~/.mimir/mcp.json (merged on top, user wins). Same schema as Claude Code's mcpServers; env:NAME values resolve from the environment.",
+  "mcpServers": {
+    "notion": {
+      "type": "http",
+      "url": "https://mcp.notion.com/mcp"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 """Configuration loading for Mimir.
 
-Config is a TOML file (see ``config.example.toml``). String values of the form
+Config is a TOML file (``config.toml`` in the repo root). String values of the form
 ``env:VAR_NAME`` are resolved from the environment at load time, so secrets stay
 out of the file. Resolution order for the config path:
 
@@ -23,6 +23,14 @@ from pathlib import Path
 # profile.md lives inside the profiles module so the module is self-contained.
 DEFAULT_PROFILE_PATH = Path(__file__).resolve().parent / "profiles" / "profile.md"
 
+# Built-in MCP servers ship inside the package (src/resources/mcp.local.json)
+# and load on every startup — no user setup required.
+BUILTIN_MCP_JSON = Path(__file__).resolve().parent / "resources" / "mcp.local.json"
+# Per-user MCP home. Created on startup if missing; an optional mcp.json inside
+# holds extra/override servers layered on top of the built-ins.
+MIMIR_HOME = Path.home() / ".mimir"
+USER_MCP_JSON = MIMIR_HOME / "mcp.json"
+
 
 def _resolve_env(value):
     """Recursively resolve ``env:VAR`` strings against the environment."""
@@ -42,8 +50,9 @@ class Config:
     llm: dict[str, dict] = field(default_factory=dict)
     profile_path: Path = DEFAULT_PROFILE_PATH
     notion: dict = field(default_factory=dict)
-    # Merged { "mcpServers": {...} } from mcp.json + mcp.local.json. The sole
-    # source of MCP servers — nothing is hardcoded.
+    # Merged { "mcpServers": {...} } from the built-in resources/mcp.local.json
+    # + the user's ~/.mimir/mcp.json. The sole source of MCP servers — nothing
+    # is hardcoded.
     mcp_json: dict = field(default_factory=dict)
 
     def llm_settings(self) -> dict:
@@ -63,26 +72,34 @@ def _find_config_path(path: str | None) -> Path | None:
     return None
 
 
+def _read_mcp_servers(path: Path) -> dict:
+    """Read one Claude-Code-style file's ``mcpServers`` object (or ``{}``)."""
+    if not path.is_file():
+        return {}
+    with path.open("rb") as fh:
+        data = _resolve_env(json.load(fh))
+    return (data or {}).get("mcpServers") or {}
+
+
 def _load_mcp_json() -> dict:
-    """Merge the MCP server definitions from the two JSON config files.
+    """Merge the built-in MCP servers with the user's optional extra config.
 
-    The server set is read entirely from these Claude-Code-style files — nothing
-    is hardcoded:
+    Two layers, read entirely from JSON — nothing is hardcoded in code:
 
-    - ``mcp.json``       — committed, user-editable, shared servers.
-    - ``mcp.local.json`` — gitignored, machine-local servers / overrides.
+    1. ``src/resources/mcp.local.json`` — built-in servers bundled with Mimir;
+       loaded on every startup, no setup needed.
+    2. ``~/.mimir/mcp.json`` — optional per-user extra servers / overrides.
+       ``~/.mimir`` is created on startup if absent; the file is read only when
+       present. ``$MIMIR_MCP_JSON`` overrides this path.
 
-    Their ``mcpServers`` objects are merged in order, so ``mcp.local.json`` wins
-    on a name clash. ``$MIMIR_MCP_JSON`` overrides the base ``mcp.json`` path.
-    ``env:NAME`` strings inside resolve from the environment, same as TOML.
+    The user file overlays the built-ins, so a server defined there wins on a
+    name clash. ``env:NAME`` strings resolve from the environment, same as TOML.
     """
-    base = os.environ.get("MIMIR_MCP_JSON") or "mcp.json"
+    MIMIR_HOME.mkdir(parents=True, exist_ok=True)
+    user_path = Path(os.environ.get("MIMIR_MCP_JSON") or USER_MCP_JSON)
     servers: dict = {}
-    for candidate in (base, "mcp.local.json"):
-        if candidate and Path(candidate).is_file():
-            with Path(candidate).open("rb") as fh:
-                data = _resolve_env(json.load(fh))
-            servers.update((data or {}).get("mcpServers") or {})
+    servers.update(_read_mcp_servers(BUILTIN_MCP_JSON))
+    servers.update(_read_mcp_servers(user_path))
     return {"mcpServers": servers}
 
 

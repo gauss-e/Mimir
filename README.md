@@ -22,7 +22,7 @@ project for the full vision). It ships two modules:
 
 ```bash
 cd Mimir
-uv sync --extra anthropic        # or: --extra openai / --extra notion / --extra files
+uv sync --extra anthropic        # or: --extra openai / --extra mcp / --extra files
 ```
 
 `uv sync` creates the virtualenv and installs deps. Pick the extras you need;
@@ -30,12 +30,21 @@ Ollama needs none.
 
 ## Configure
 
+Create `config.toml` in the repo root (gitignored). Minimal Anthropic example:
+
+```toml
+[llm]
+provider = "anthropic"
+
+[llm.anthropic]
+api_key = "env:ANTHROPIC_API_KEY"   # resolved from the env at load
+```
+
 ```bash
-cp config.example.toml config.toml
 export ANTHROPIC_API_KEY=sk-...   # or OPENAI_API_KEY; Ollama needs no key
 ```
 
-Edit `[llm].provider` to choose your backend.
+Set `[llm].provider` (`anthropic` / `openai` / `ollama`) to choose your backend.
 
 ## Run
 
@@ -91,10 +100,12 @@ Mimir reaches external tools (Notion, the filesystem, Office docs, …) through
 **MCP servers**, configured Claude-Code-style in two JSON files (nothing is
 hardcoded — a server exists only if it's listed here):
 
-- `mcp.json` — committed, shared. Best for remote servers reached over OAuth
-  SSO (no tokens to commit).
-- `mcp.local.json` — gitignored, machine-local servers / overrides. Merged on
-  top of `mcp.json`, so a same-named server here wins.
+- `src/resources/mcp.local.json` — **built-in**, committed, shipped in the
+  wheel. Loaded on every startup, no setup. Best place for default servers.
+- `~/.mimir/mcp.json` — **optional per-user** extra servers / overrides.
+  `~/.mimir` is created on first launch; drop an `mcp.json` in it to add or
+  override servers. Merged on top of the built-ins, so a same-named server here
+  wins. (Best for remote servers reached over OAuth SSO — no tokens to commit.)
 
 ```json
 {
@@ -108,7 +119,7 @@ hardcoded — a server exists only if it's listed here):
 
 Run `/mcp` in the TUI to see how many servers connected and how many tools each
 exposes; `/mcp add <name> <cmd|url> <args…>` adds one at runtime. Needs the MCP
-SDK: `uv sync --extra notion`.
+SDK: `uv sync --extra mcp`.
 
 ## Layout
 
@@ -116,12 +127,12 @@ SDK: `uv sync --extra notion`.
 Mimir/
   pyproject.toml      # packaging (hatchling) + uv config
   config.toml         # local config (gitignored)
-  mcp.json            # MCP servers (committed, shared)
-  mcp.local.json      # MCP servers / overrides (gitignored, machine-local)
   src/                # flat layout: modules ship top-level (src/ stripped on build)
     cli.py            # entry point (console script `mimir`)
     app.py            # Textual TUI (scrolling chat + input + footer)
-    config.py         # TOML + env config + mcp.json/mcp.local.json merge
+    config.py         # TOML + env config + built-in/user mcp.json merge
+    resources/        # bundled package data
+      mcp.local.json  # built-in MCP servers (committed, always loaded)
     infrastructure/   # cross-cutting plumbing (not domain logic)
       llm/            # provider-agnostic LLM client
         base.py client.py providers/{openai,anthropic,ollama}_provider.py

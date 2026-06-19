@@ -34,7 +34,7 @@ class NotionSource(Source):
         if not self.cfg.get("command"):
             raise RuntimeError(
                 "Notion source needs a [notion] command in config.toml "
-                "(the MCP server to launch). See config.example.toml."
+                "(the MCP server to launch)."
             )
         return asyncio.run(self._fetch_async())
 
