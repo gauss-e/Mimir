@@ -5,7 +5,7 @@ All ``ingest_*`` calls are blocking (LLM + I/O).
 
 from __future__ import annotations
 
-from ..llm import LLMProvider
+from infrastructure.llm import LLMProvider
 from . import parser
 from .sources import FileSource, NotionSource, Source, TextSource
 from .store import ProfileStore

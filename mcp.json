@@ -1,0 +1,9 @@
+{
+  "_comment": "Committed, user-editable MCP servers (Claude-Code-style). Best for remote servers reached over OAuth SSO (no tokens, no local processes): first connect opens a browser to log in; tokens cache in ~/.mimir/oauth/. Machine-local servers go in mcp.local.json (gitignored), which merges on top of this file. Add more servers under mcpServers as needed.",
+  "mcpServers": {
+    "notion": {
+      "type": "http",
+      "url": "https://mcp.notion.com/mcp"
+    }
+  }
+}

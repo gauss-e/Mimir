@@ -219,8 +219,9 @@ __marimo__/
 
 # Mimir local
 config.toml
+mcp.local.json
 .env
-src/mimir/profile/profile.md
+src/profiles/profile.md
 
 .DS_Store
 
