@@ -29,3 +29,10 @@ args = ["-y", "@notionhq/notion-mcp-server"]
 env = { NOTION_TOKEN = "env:NOTION_TOKEN" }
 search_tool = "search"   # adjust to match your Notion MCP server's tool names
 fetch_tool = "fetch"
+
+# MCP servers are NOT configured here. Mimir reads them entirely from two
+# Claude-Code-style JSON files (nothing hardcoded):
+#   • mcp.json        — committed, shared (best for remote OAuth servers).
+#   • mcp.local.json  — gitignored, machine-local servers / overrides.
+# In the TUI: `/mcp` shows connection status, `/mcp add <name> <cmd|url> <args…>`
+# adds one at runtime. Needs the MCP SDK: `uv sync --extra notion`.

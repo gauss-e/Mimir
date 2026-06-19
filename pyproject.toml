@@ -23,7 +23,11 @@ notion = ["mcp>=1.0"]               # pull profile info from Notion via MCP
 files = ["pypdf>=4.0", "python-docx>=1.1"]  # parse .pdf / .docx résumés
 
 [project.scripts]
-mimir = "mimir.__main__:main"
+mimir = "cli:main"
 
+# Flat src layout: modules live straight under src/ (no inner package dir).
+# `sources = ["src"]` strips the src/ prefix so they ship as top-level
+# modules/packages (cli, app, config, infrastructure/, profiles/).
 [tool.hatch.build.targets.wheel]
-packages = ["src/mimir"]
+only-include = ["src"]
+sources = ["src"]

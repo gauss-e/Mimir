@@ -67,6 +67,9 @@ colors, or layout look off:
 - Ensure 256/true color: `export TERM=xterm-256color` (and `COLORTERM=truecolor`).
 - Use a Nerd Font (or any modern monospace) so box-drawing glyphs align.
 - Give the window some size — a tiny window clips the input box and footer.
+- Commands start with `/`. A CJK input method may emit the fullwidth `／`;
+  Mimir normalizes a leading `／` to `/`, but switching the IME to English /
+  half-width is the surest way to type commands.
 
 ## Profile flow
 
@@ -79,8 +82,33 @@ colors, or layout look off:
 3. The LLM distils the raw material into a structured `profile.md`, which then
    grounds every future conversation.
 
-In-app commands: `/profile` (show), `/reload`, `/file`, `/notion`, `/help`,
-`/quit`. Keys: `ctrl+l` clear, `ctrl+c` quit.
+In-app commands: `/profile` (show), `/reload`, `/file`, `/notion`, `/mcp`,
+`/help`, `/quit`. Keys: `ctrl+l` clear, `ctrl+q` / `ctrl+c` quit.
+
+## MCP servers
+
+Mimir reaches external tools (Notion, the filesystem, Office docs, …) through
+**MCP servers**, configured Claude-Code-style in two JSON files (nothing is
+hardcoded — a server exists only if it's listed here):
+
+- `mcp.json` — committed, shared. Best for remote servers reached over OAuth
+  SSO (no tokens to commit).
+- `mcp.local.json` — gitignored, machine-local servers / overrides. Merged on
+  top of `mcp.json`, so a same-named server here wins.
+
+```json
+{
+  "mcpServers": {
+    "notion":     { "type": "http", "url": "https://mcp.notion.com/mcp" },
+    "filesystem": { "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-filesystem", "."] }
+  }
+}
+```
+
+Run `/mcp` in the TUI to see how many servers connected and how many tools each
+exposes; `/mcp add <name> <cmd|url> <args…>` adds one at runtime. Needs the MCP
+SDK: `uv sync --extra notion`.
 
 ## Layout
 
@@ -88,13 +116,18 @@ In-app commands: `/profile` (show), `/reload`, `/file`, `/notion`, `/help`,
 Mimir/
   pyproject.toml      # packaging (hatchling) + uv config
   config.toml         # local config (gitignored)
-  src/mimir/
-    __main__.py       # entry point (mimir / python -m mimir)
-    app.py            # Textual TUI (scrolling chat + docked input + footer)
-    config.py         # TOML + env config
-    llm/              # provider-agnostic LLM client
-      base.py client.py providers/{openai,anthropic,ollama}_provider.py
-    profile/          # user-profile module
+  mcp.json            # MCP servers (committed, shared)
+  mcp.local.json      # MCP servers / overrides (gitignored, machine-local)
+  src/                # flat layout: modules ship top-level (src/ stripped on build)
+    cli.py            # entry point (console script `mimir`)
+    app.py            # Textual TUI (scrolling chat + input + footer)
+    config.py         # TOML + env config + mcp.json/mcp.local.json merge
+    infrastructure/   # cross-cutting plumbing (not domain logic)
+      llm/            # provider-agnostic LLM client
+        base.py client.py providers/{openai,anthropic,ollama}_provider.py
+      mcp/            # MCP server registry (JSON-driven) + hub + probe (/mcp)
+        registry.py hub.py oauth.py manager.py
+    profiles/         # user-profile module (plural: avoids stdlib `profile` clash)
       service.py store.py parser.py
       profile.md      # generated (gitignored)
       sources/        # file / text / notion(MCP)

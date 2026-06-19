@@ -14,13 +14,14 @@ the conventional env vars (``OPENAI_API_KEY`` / ``ANTHROPIC_API_KEY``).
 
 from __future__ import annotations
 
+import json
 import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# profile.md lives inside the profile module so the module is self-contained.
-DEFAULT_PROFILE_PATH = Path(__file__).resolve().parent / "profile" / "profile.md"
+# profile.md lives inside the profiles module so the module is self-contained.
+DEFAULT_PROFILE_PATH = Path(__file__).resolve().parent / "profiles" / "profile.md"
 
 
 def _resolve_env(value):
@@ -41,6 +42,9 @@ class Config:
     llm: dict[str, dict] = field(default_factory=dict)
     profile_path: Path = DEFAULT_PROFILE_PATH
     notion: dict = field(default_factory=dict)
+    # Merged { "mcpServers": {...} } from mcp.json + mcp.local.json. The sole
+    # source of MCP servers — nothing is hardcoded.
+    mcp_json: dict = field(default_factory=dict)
 
     def llm_settings(self) -> dict:
         """Settings for the currently selected provider, with env fallbacks."""
@@ -57,6 +61,29 @@ def _find_config_path(path: str | None) -> Path | None:
         if candidate and Path(candidate).is_file():
             return Path(candidate)
     return None
+
+
+def _load_mcp_json() -> dict:
+    """Merge the MCP server definitions from the two JSON config files.
+
+    The server set is read entirely from these Claude-Code-style files — nothing
+    is hardcoded:
+
+    - ``mcp.json``       — committed, user-editable, shared servers.
+    - ``mcp.local.json`` — gitignored, machine-local servers / overrides.
+
+    Their ``mcpServers`` objects are merged in order, so ``mcp.local.json`` wins
+    on a name clash. ``$MIMIR_MCP_JSON`` overrides the base ``mcp.json`` path.
+    ``env:NAME`` strings inside resolve from the environment, same as TOML.
+    """
+    base = os.environ.get("MIMIR_MCP_JSON") or "mcp.json"
+    servers: dict = {}
+    for candidate in (base, "mcp.local.json"):
+        if candidate and Path(candidate).is_file():
+            with Path(candidate).open("rb") as fh:
+                data = _resolve_env(json.load(fh))
+            servers.update((data or {}).get("mcpServers") or {})
+    return {"mcpServers": servers}
 
 
 def load_config(path: str | None = None) -> Config:
@@ -79,4 +106,5 @@ def load_config(path: str | None = None) -> Config:
         llm=providers,
         profile_path=profile_path,
         notion=raw.get("notion", {}),
+        mcp_json=_load_mcp_json(),
     )

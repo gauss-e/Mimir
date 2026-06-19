@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..llm import LLMProvider, Message
+from infrastructure.llm import LLMProvider, Message
 
 _SYSTEM = """\
 You are Mimir's profile extractor. Given raw career material (a résumé, notes,

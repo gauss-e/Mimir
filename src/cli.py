@@ -1,10 +1,10 @@
-"""Entry point: the ``mimir`` console script, or ``python -m mimir``."""
+"""Entry point: the ``mimir`` console script."""
 
 from __future__ import annotations
 
 import argparse
 
-from .app import run
+from app import run
 
 
 def main() -> None:
