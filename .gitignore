@@ -217,7 +217,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# top-level copies are local/ignored.
+# Mimir local
+# config.toml is committed (canonical config; secrets stay as env:VAR).
+# A stray top-level mcp.json is local; the built-in lives in src/resources/.
 mcp.json
 .env
 src/profiles/profile.md
