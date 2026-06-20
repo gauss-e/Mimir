@@ -40,12 +40,26 @@ class AnthropicProvider(LLMProvider):
         ]
         return system, convo
 
+    @staticmethod
+    def _system_param(system: str):
+        """System as a single cached text block. Within a session the system
+        prompt (persona + profile + date) is stable, so caching it lets every
+        turn after the first reuse the prefix instead of re-billing it. Blocks
+        under the cache minimum are silently not cached — no error, no harm."""
+        if not system:
+            return None
+        return [{
+            "type": "text",
+            "text": system,
+            "cache_control": {"type": "ephemeral"},
+        }]
+
     def chat(self, messages: list[Message], **kwargs) -> str:
         system, convo = self._split(messages)
         resp = self._client.messages.create(
             model=self.model,
             max_tokens=kwargs.pop("max_tokens", self.max_tokens),
-            system=system or None,
+            system=self._system_param(system),
             messages=convo,
             **kwargs,
         )
@@ -56,7 +70,7 @@ class AnthropicProvider(LLMProvider):
         with self._client.messages.stream(
             model=self.model,
             max_tokens=kwargs.pop("max_tokens", self.max_tokens),
-            system=system or None,
+            system=self._system_param(system),
             messages=convo,
             **kwargs,
         ) as stream:
@@ -83,12 +97,20 @@ class AnthropicProvider(LLMProvider):
              "input_schema": t.input_schema or {"type": "object"}}
             for t in tools
         ]
+        # Cache the whole tool block: schemas are the heaviest, most static part
+        # of every request. A breakpoint on the last tool caches all of them, so
+        # the catalog is billed once per ~5-min window instead of every turn.
+        # (ollama/openai ignore cache_control; this is an Anthropic-only win.)
+        if tool_schema:
+            tool_schema[-1] = {**tool_schema[-1],
+                               "cache_control": {"type": "ephemeral"}}
+        system_param = self._system_param(system)
         final = ""
         for _ in range(max_steps):
             with self._client.messages.stream(
                 model=self.model,
                 max_tokens=self.max_tokens,
-                system=system or None,
+                system=system_param,
                 messages=convo,
                 tools=tool_schema,
             ) as stream:

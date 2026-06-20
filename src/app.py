@@ -19,24 +19,21 @@ from textual.widgets import Footer, Header, Input, Static
 
 from banner_art import MIMIR_ART
 from config import Config, load_config
+from infrastructure.context import ContextBuilder
 from infrastructure.llm import Message, build_provider
 from infrastructure.mcp import McpHub, McpServerConfig, load_servers
 from profiles import ProfileService, ProfileStore
 
-CHAT_SYSTEM = """\
-You are Mimir, a sharp, candid personal career advisor. You know the user via the
-profile below. Reason from their actual stack and goals; never manufacture
-anxiety. Offer options with trade-offs, not a single verdict. Be concise.
-
---- USER PROFILE ---
-{profile}
---- END PROFILE ---
-"""
-
-ONBOARDING = """No profile found yet. Tell me about your career so I can build one:
-  • type a summary and press Enter
-  • /file <path>      load a résumé (.txt/.md/.pdf/.docx)
-  • /notion <query>   pull career info from Notion (needs MCP configured)"""
+# Mimir's proactive opening lines. The agent loads everything on entry and
+# speaks first, in-voice — no raw onboarding screen. GREET_NEW is shown when no
+# profile exists yet; GREET_BACK when one is already on file.
+GREET_NEW = (
+    "我醒了。可惜此刻我对你还一无所知 —— 你做过什么、擅长什么、想去哪里，"
+    "于我都还是一片空白，朋友。\n\n"
+    "随口跟我聊聊你自己吧。也可以把简历交给我（/file <路径>），"
+    "或让我从你的 Notion 里取（/notion <关键词>）。"
+)
+GREET_BACK = "我在。你的画像我已记得 —— 想从哪儿聊起？"
 
 HELP = ("/profile  /reload  /file <path>  /notion <q>  "
         "/mcp [add <name> <cmd|url> …] [logout <name>]  /help  /quit")
@@ -106,6 +103,7 @@ class MimirApp(App):
         self.config = config
         self.store = ProfileStore(config.profile_path)
         self.service: ProfileService | None = None
+        self.context: ContextBuilder | None = None
         self.llm = None
         self.init_error: str | None = None
         self.mode = "chat"  # "chat" | "onboarding"
@@ -143,13 +141,17 @@ class MimirApp(App):
             self._say("info", "Fix config.toml (or env keys) and restart.")
             return
 
+        # System prompt + context are built and ready from the moment we mount,
+        # rebuilt fresh each turn (it reads the hub live, so MCP tools join in as
+        # they connect). Mimir then speaks first, in-voice — never an onboarding
+        # screen: an empty profile becomes a warm invitation, not a checklist.
+        self.context = ContextBuilder(self.service, self.hub)
         if self.service.needs_onboarding():
             self.mode = "onboarding"
-            self._say("info", ONBOARDING)
+            self._say("mimir", GREET_NEW)
         else:
             self.mode = "chat"
-            self._say("info", f"Profile loaded from {self.config.profile_path}.")
-            self._say("info", "Ask me anything about your career. /help for commands.")
+            self._say("mimir", GREET_BACK)
         if self.mcp_servers:
             # Connect quietly in the background — no tool-count chatter in the UI.
             self._start_hub_worker(self.mcp_servers)
@@ -209,7 +211,7 @@ class MimirApp(App):
         if cmd in ("/quit", "/exit", "/q"):
             self.exit()
         elif cmd == "/help":
-            self._say("info", ONBOARDING if self.mode == "onboarding" else HELP)
+            self._say("info", HELP)
         elif cmd == "/clear":
             self.action_clear()
         elif cmd == "/profile":
@@ -239,8 +241,7 @@ class MimirApp(App):
     # --- chat (streaming) ------------------------------------------------
     def _chat(self, text: str) -> None:
         self.history.append(Message("user", text))
-        system = CHAT_SYSTEM.format(profile=self.service.summary())
-        messages = [Message("system", system), *self.history]
+        messages = self.context.messages(self.history)
         bubble = self._say("mimir", "…")
         # When MCP tools are live and the backend supports them, run the agentic
         # loop so the model can call tools; otherwise plain streaming.
@@ -296,7 +297,7 @@ class MimirApp(App):
     # --- ingestion (onboarding) -----------------------------------------
     @work(thread=True)
     def _ingest_worker(self, kind: str, arg: str, label: str) -> None:
-        self.call_from_thread(self._say, "info", f"ingesting {label}…")
+        self.call_from_thread(self._say, "info", f"(Mimir 正在读取 {label}…)")
         fn = {
             "text": self.service.ingest_text,
             "file": self.service.ingest_file,
@@ -307,11 +308,11 @@ class MimirApp(App):
         except Exception as e:
             self.call_from_thread(self._say, "error", f"ingest failed: {e}")
             return
-        self.call_from_thread(self._say, "mimir", f"profile built → {self.config.profile_path}")
+        self.call_from_thread(self._say, "mimir", "记下了 —— 我正把它整理进对你的认识里。")
         self.call_from_thread(self._say, "info", profile_md)
         self.mode = "chat"
         self.history.clear()
-        self.call_from_thread(self._say, "mimir", "Onboarding done. Ask me anything about your career.")
+        self.call_from_thread(self._say, "mimir", "好了，我对你已经有了初步的画像。接着聊吧。")
 
     # --- MCP --------------------------------------------------------------
     def _mcp_command(self, arg: str) -> None:
@@ -389,6 +390,8 @@ class MimirApp(App):
         hub = McpHub(servers)
         st = hub.start()
         self.hub = hub
+        if self.context is not None:
+            self.context.hub = hub
         ok, total = len(st.connected), len(servers)
         # Banner shows connection status only — no tool counts in the UI.
         mcp_line = (f"[#34d399]✓[/] connected {ok}/{total} MCP"
