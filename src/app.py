@@ -9,6 +9,18 @@ through onboarding (paste a summary, ``/file`` a résumé, or ``/notion``).
 from __future__ import annotations
 
 import json
+import os
+
+# Disable Textual's Kitty keyboard protocol BEFORE importing textual: under
+# `report-all-keys`, a Kitty-capable terminal (kitty/ghostty/WezTerm/foot,
+# recent iTerm2/Konsole) reports every keypress as a CSI-u sequence instead of
+# plain text. That breaks CJK/IME input — an IME commit arrives as a "text
+# event" (`CSI 0;;<codepoints>u`) whose multi-codepoint form Textual's parser
+# can't decode, so composed Chinese silently vanishes; even plain space/slash
+# come through with no character. Legacy mode delivers IME-composed text as raw
+# UTF-8, which Textual parses correctly. `textual.constants` reads this env var
+# at import time, so it must be set first. (Respect an explicit user override.)
+os.environ.setdefault("TEXTUAL_DISABLE_KITTY_KEY", "1")
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -176,7 +188,16 @@ class MimirApp(App):
             return
         glyph = self._KEY_FIXUPS.get(event.key)
         if glyph is None:
-            return
+            # A CJK IME may commit composed text as the key *name* with no
+            # character (e.g. key="你好", character=None); Textual's Input only
+            # inserts events that carry a printable character, so the Chinese
+            # silently vanishes. Recover it: a key whose name is non-ASCII and
+            # printable is composed text, not a control-key name like "enter"
+            # or "space" (those are ASCII and stay out of this branch).
+            if event.key and not event.key.isascii() and event.key.isprintable():
+                glyph = event.key
+            else:
+                return
         inp = self.query_one("#prompt", Input)
         if self.focused is inp:
             inp.insert_text_at_cursor(glyph)
